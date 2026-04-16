@@ -134,6 +134,28 @@ NEW → CONFIRMED → ASSEMBLING → READY_FOR_DELIVERY → ASSIGNED_TO_COURIER 
 
 Каждый переход контролируется по роли актора. Подробнее: [docs/product/order_status_machine.md](docs/product/order_status_machine.md)
 
+## Доступ из интернета (Cloudflare Tunnels)
+
+Для разработки и тестирования Mini App через Telegram используются Cloudflare Quick Tunnels:
+
+```bash
+# Установка
+brew install cloudflared
+
+# Запуск тоннелей
+cloudflared tunnel --url http://localhost:5173 &  # Mini App
+cloudflared tunnel --url http://localhost:5174 &  # Admin Panel
+cloudflared tunnel --url http://localhost:5175 &  # Courier Panel
+```
+
+Укажите HTTPS URL Mini App в `.env` и перезапустите backend:
+```bash
+MINI_APP_URL=https://xxx.trycloudflare.com
+docker compose up -d backend
+```
+
+Подробнее: [docs/ops/dev_tunnels.md](docs/ops/dev_tunnels.md)
+
 ## Оплата
 
 MVP поддерживает только **наличные при доставке**. Онлайн-оплата запланирована в следующих итерациях.
@@ -146,6 +168,8 @@ MVP поддерживает только **наличные при достав
 - [RBAC матрица](docs/security/rbac_matrix.md)
 - [Стандарты API](docs/api/api_standards.md)
 - [Стратегия тестирования](docs/qa/test_strategy.md)
+- [Cloudflare Tunnels (dev)](docs/ops/dev_tunnels.md)
+- [Operations Runbook](docs/ops/runbook.md)
 
 ## Лицензия
 

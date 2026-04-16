@@ -134,6 +134,28 @@ NEW → CONFIRMED → ASSEMBLING → READY_FOR_DELIVERY → ASSIGNED_TO_COURIER 
 
 Each transition is controlled by actor role. Details: [docs/product/order_status_machine.md](docs/product/order_status_machine.md)
 
+## Internet Access (Cloudflare Tunnels)
+
+For development and testing the Mini App via Telegram, use Cloudflare Quick Tunnels:
+
+```bash
+# Install
+brew install cloudflared
+
+# Start tunnels
+cloudflared tunnel --url http://localhost:5173 &  # Mini App
+cloudflared tunnel --url http://localhost:5174 &  # Admin Panel
+cloudflared tunnel --url http://localhost:5175 &  # Courier Panel
+```
+
+Set the HTTPS Mini App URL in `.env` and restart the backend:
+```bash
+MINI_APP_URL=https://xxx.trycloudflare.com
+docker compose up -d backend
+```
+
+Details: [docs/ops/dev_tunnels.md](docs/ops/dev_tunnels.md)
+
 ## Payment
 
 The MVP supports **cash on delivery only**. Online payments are planned for future iterations.
@@ -146,6 +168,8 @@ The MVP supports **cash on delivery only**. Online payments are planned for futu
 - [RBAC Matrix](docs/security/rbac_matrix.md)
 - [API Standards](docs/api/api_standards.md)
 - [Test Strategy](docs/qa/test_strategy.md)
+- [Cloudflare Tunnels (dev)](docs/ops/dev_tunnels.md)
+- [Operations Runbook](docs/ops/runbook.md)
 
 ## License
 

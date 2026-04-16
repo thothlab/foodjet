@@ -9,6 +9,25 @@ import { prisma } from '../../config/database.js';
 
 export const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
 
+const isHttps = env.MINI_APP_URL.startsWith('https://');
+
+// ---------------------------------------------------------------------------
+// Helper: build store keyboard (WebApp if HTTPS, regular URL otherwise)
+// ---------------------------------------------------------------------------
+
+function buildStoreKeyboard(storeName: string, storeSlug: string): InlineKeyboard {
+  const url = `${env.MINI_APP_URL}?store=${storeSlug}`;
+  const kb = new InlineKeyboard();
+
+  if (isHttps) {
+    kb.webApp(`Открыть ${storeName}`, url);
+  } else {
+    kb.url(`Открыть ${storeName}`, url);
+  }
+
+  return kb;
+}
+
 // ---------------------------------------------------------------------------
 // /start command — deep link with store slug
 // ---------------------------------------------------------------------------
@@ -17,7 +36,6 @@ bot.command('start', async (ctx) => {
   const payload = ctx.match; // deep link parameter (store slug)
 
   if (payload) {
-    // Look up store by slug
     const store = await prisma.store.findUnique({
       where: { slug: payload },
       include: { settings: true },
@@ -28,22 +46,26 @@ bot.command('start', async (ctx) => {
       return;
     }
 
-    const miniAppUrl = `${env.CORS_ORIGIN}/${store.slug}`;
-
-    const keyboard = new InlineKeyboard().webApp(
-      `Открыть ${store.name}`,
-      miniAppUrl,
-    );
-
     await ctx.reply(
       `Добро пожаловать в ${store.name}! 🎉\n\nНажмите кнопку ниже, чтобы открыть магазин и сделать заказ.`,
-      { reply_markup: keyboard },
+      { reply_markup: buildStoreKeyboard(store.name, store.slug) },
     );
   } else {
-    await ctx.reply(
-      'Добро пожаловать в FoodJet! 🚀\n\n' +
-        'Чтобы начать заказ, перейдите по ссылке магазина или нажмите кнопку «Меню» внизу.',
-    );
+    const store = await prisma.store.findFirst({
+      where: { status: 'ACTIVE' },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (store) {
+      await ctx.reply(
+        `Добро пожаловать в FoodJet! 🚀\n\nНажмите кнопку ниже, чтобы перейти в магазин и сделать заказ.`,
+        { reply_markup: buildStoreKeyboard(store.name, store.slug) },
+      );
+    } else {
+      await ctx.reply(
+        'Добро пожаловать в FoodJet! 🚀\n\nК сожалению, сейчас нет доступных магазинов. Попробуйте позже.',
+      );
+    }
   }
 });
 
@@ -53,12 +75,11 @@ bot.command('start', async (ctx) => {
 
 bot.command('help', async (ctx) => {
   await ctx.reply(
-    'FoodJet — сервис доставки еды.\n\n' +
+    'FoodJet — сервис доставки продуктов.\n\n' +
       'Доступные команды:\n' +
-      '/start — начать работу с ботом\n' +
+      '/start — открыть магазин\n' +
       '/help — справка\n' +
-      '/support — контакты поддержки\n\n' +
-      'Для заказа откройте Mini App через кнопку «Меню» или перейдите по ссылке магазина.',
+      '/support — контакты поддержки',
   );
 });
 
@@ -82,13 +103,42 @@ bot.catch((err) => {
 });
 
 // ---------------------------------------------------------------------------
+// Set up bot commands and Menu Button
+// ---------------------------------------------------------------------------
+
+async function setupBot(): Promise<void> {
+  await bot.api.setMyCommands([
+    { command: 'start', description: 'Открыть магазин' },
+    { command: 'help', description: 'Справка' },
+    { command: 'support', description: 'Поддержка' },
+  ]);
+
+  if (isHttps) {
+    try {
+      await bot.api.setChatMenuButton({
+        menu_button: {
+          type: 'web_app',
+          text: 'Магазин',
+          web_app: { url: env.MINI_APP_URL },
+        },
+      });
+      logger.info('Menu button configured (WebApp)');
+    } catch (error) {
+      logger.warn({ error }, 'Failed to set menu button');
+    }
+  } else {
+    logger.info('Mini App URL is not HTTPS — skipping WebApp menu button, using URL buttons instead');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Start bot
 // ---------------------------------------------------------------------------
 
 export async function startBot(): Promise<void> {
   try {
     logger.info('Starting Telegram bot...');
-    // Use long polling — suitable for development and small deployments
+    await setupBot();
     bot.start({
       onStart: () => {
         logger.info('Telegram bot started (long polling)');

@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 interface ApiError {
   message: string;
@@ -62,16 +62,19 @@ async function handleResponse<T>(response: Response): Promise<T> {
 }
 
 export async function get<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
-  const url = new URL(`${BASE_URL}${path}`);
+  let url = `${BASE_URL}${path}`;
   if (params) {
+    const qs = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined) {
-        url.searchParams.set(key, String(value));
+        qs.set(key, String(value));
       }
     });
+    const qsStr = qs.toString();
+    if (qsStr) url += `?${qsStr}`;
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await fetch(url, {
     method: 'GET',
     headers: buildHeaders(),
   });
