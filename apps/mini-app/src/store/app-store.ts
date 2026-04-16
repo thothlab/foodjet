@@ -109,6 +109,7 @@ export interface UserProfile {
 interface AppState {
   // Store info
   storeSlug: string | null;
+  storeId: string | null;
   storeInfo: StoreInfo | null;
   storeLoading: boolean;
   storeError: string | null;
@@ -187,6 +188,7 @@ export interface CreateAddressData {
 export const useAppStore = create<AppState>((set, getState) => ({
   // Initial state
   storeSlug: null,
+  storeId: null,
   storeInfo: null,
   storeLoading: false,
   storeError: null,
@@ -207,7 +209,7 @@ export const useAppStore = create<AppState>((set, getState) => ({
     set({ storeLoading: true, storeError: null });
     try {
       const storeInfo = await get<StoreInfo>(`/stores/${slug}/bootstrap`);
-      set({ storeInfo, storeSlug: slug, storeLoading: false });
+      set({ storeInfo, storeSlug: slug, storeId: storeInfo.id, storeLoading: false });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load store';
       set({ storeError: message, storeLoading: false });
@@ -215,11 +217,11 @@ export const useAppStore = create<AppState>((set, getState) => ({
   },
 
   fetchCart: async () => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ cartLoading: true });
     try {
-      const cart = await get<Cart>(`/stores/${storeSlug}/cart`);
+      const cart = await get<Cart>(`/stores/${storeId}/cart`);
       set({ cart, cartLoading: false });
     } catch {
       set({ cartLoading: false });
@@ -227,11 +229,11 @@ export const useAppStore = create<AppState>((set, getState) => ({
   },
 
   addToCart: async (productId: string, quantity = 1) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ cartLoading: true });
     try {
-      const cart = await post<Cart>(`/stores/${storeSlug}/cart/items`, { productId, quantity });
+      const cart = await post<Cart>(`/stores/${storeId}/cart/items`, { productId, quantity });
       set({ cart, cartLoading: false });
     } catch {
       set({ cartLoading: false });
@@ -239,11 +241,11 @@ export const useAppStore = create<AppState>((set, getState) => ({
   },
 
   removeFromCart: async (itemId: string) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ cartLoading: true });
     try {
-      const cart = await del<Cart>(`/stores/${storeSlug}/cart/items/${itemId}`);
+      const cart = await del<Cart>(`/stores/${storeId}/cart/items/${itemId}`);
       set({ cart, cartLoading: false });
     } catch {
       set({ cartLoading: false });
@@ -251,11 +253,11 @@ export const useAppStore = create<AppState>((set, getState) => ({
   },
 
   updateQuantity: async (itemId: string, quantity: number) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ cartLoading: true });
     try {
-      const cart = await put<Cart>(`/stores/${storeSlug}/cart/items/${itemId}`, { quantity });
+      const cart = await put<Cart>(`/stores/${storeId}/cart/items/${itemId}`, { quantity });
       set({ cart, cartLoading: false });
     } catch {
       set({ cartLoading: false });
@@ -263,11 +265,11 @@ export const useAppStore = create<AppState>((set, getState) => ({
   },
 
   clearCart: async () => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ cartLoading: true });
     try {
-      await del(`/stores/${storeSlug}/cart`);
+      await del(`/stores/${storeId}/cart`);
       set({ cart: null, cartLoading: false });
     } catch {
       set({ cartLoading: false });
@@ -275,13 +277,13 @@ export const useAppStore = create<AppState>((set, getState) => ({
   },
 
   fetchProducts: async (categoryId: string) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ productsLoading: true });
     try {
-      const products = await get<Product[]>(`/stores/${storeSlug}/categories/${categoryId}/products`);
+      const res = await get<{ data: Product[] }>(`/stores/${storeId}/products`, { categoryId });
       set((state) => ({
-        products: { ...state.products, [categoryId]: products },
+        products: { ...state.products, [categoryId]: res.data ?? res as unknown as Product[] },
         productsLoading: false,
       }));
     } catch {
@@ -290,38 +292,36 @@ export const useAppStore = create<AppState>((set, getState) => ({
   },
 
   fetchProduct: async (productId: string) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) throw new Error('No store');
-    return get<Product>(`/stores/${storeSlug}/products/${productId}`);
+    const res = await get<{ data: Product }>(`/products/${productId}`);
+    return res.data ?? res as unknown as Product;
   },
 
   searchProducts: async (query: string) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ searchLoading: true });
     try {
-      const results = await get<Product[]>(`/stores/${storeSlug}/products/search`, { q: query });
-      set({ searchResults: results, searchLoading: false });
+      const res = await get<{ data: Product[] }>(`/stores/${storeId}/products/search`, { q: query });
+      set({ searchResults: res.data ?? res as unknown as Product[], searchLoading: false });
     } catch {
       set({ searchResults: [], searchLoading: false });
     }
   },
 
   createOrder: async (data: CreateOrderData) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) throw new Error('No store');
-    const order = await post<Order>(`/stores/${storeSlug}/orders`, data);
-    // Refresh cart after order
+    const { storeId } = getState();
+    if (!storeId) throw new Error('No store');
+    const order = await post<Order>(`/stores/${storeId}/orders`, data);
     set({ cart: null });
     return order;
   },
 
   fetchOrders: async () => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ ordersLoading: true });
     try {
-      const orders = await get<Order[]>(`/stores/${storeSlug}/orders`);
+      const orders = await get<Order[]>(`/stores/${storeId}/orders`);
       set({ orders, ordersLoading: false });
     } catch {
       set({ ordersLoading: false });
@@ -329,17 +329,17 @@ export const useAppStore = create<AppState>((set, getState) => ({
   },
 
   fetchOrder: async (orderId: string) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) throw new Error('No store');
-    return get<Order>(`/stores/${storeSlug}/orders/${orderId}`);
+    const { storeId } = getState();
+    if (!storeId) throw new Error('No store');
+    return get<Order>(`/stores/${storeId}/orders/${orderId}`);
   },
 
   reorderFromOrder: async (orderId: string) => {
-    const { storeSlug } = getState();
-    if (!storeSlug) return;
+    const { storeId } = getState();
+    if (!storeId) return;
     set({ cartLoading: true });
     try {
-      const cart = await post<Cart>(`/stores/${storeSlug}/orders/${orderId}/reorder`);
+      const cart = await post<Cart>(`/stores/${storeId}/orders/${orderId}/reorder`);
       set({ cart, cartLoading: false });
     } catch {
       set({ cartLoading: false });

@@ -14,12 +14,13 @@ export function HomePage() {
 
   useEffect(() => {
     ready();
-    const slug = startParam || storeSlug || localStorage.getItem('store_slug') || 'default';
+    // Get store slug from: Telegram startParam → URL ?store= → saved → default
+    const urlParams = new URLSearchParams(window.location.search);
+    const slug = startParam || urlParams.get('store') || storeSlug || localStorage.getItem('store_slug') || 'demo-store';
     localStorage.setItem('store_slug', slug);
     useAppStore.getState().setStoreSlug(slug);
     fetchBootstrap(slug);
-    fetchCart();
-  }, [startParam, ready, fetchBootstrap, fetchCart, storeSlug]);
+  }, [startParam, ready, fetchBootstrap, storeSlug]);
 
   if (storeLoading) {
     return <Loader fullScreen text="Загружаем магазин..." />;

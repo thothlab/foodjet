@@ -29,34 +29,51 @@ export async function resolveStoreBySlug(slug: string) {
 }
 
 /**
- * Bootstrap payload for the Mini App: store + settings + isOpen.
+ * Bootstrap payload for the Mini App: store + settings + isOpen + categories.
+ * Accepts either UUID or slug.
  */
-export async function getStoreBootstrap(storeId: string) {
-  const store = await prisma.store.findUnique({
-    where: { id: storeId },
+export async function getStoreBootstrap(storeIdOrSlug: string) {
+  // Try by UUID first, then by slug
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeIdOrSlug);
+
+  const store = await prisma.store.findFirst({
+    where: isUuid ? { id: storeIdOrSlug } : { slug: storeIdOrSlug },
     include: {
       settings: true,
       workingHours: true,
+      categories: {
+        where: { status: 'ACTIVE' },
+        orderBy: { sortOrder: 'asc' },
+        include: { _count: { select: { products: { where: { status: 'ACTIVE', isAvailable: true } } } } },
+      },
     },
   });
 
   if (!store) {
-    throw new NotFoundError('Store', storeId);
+    throw new NotFoundError('Store', storeIdOrSlug);
   }
 
   const isOpen = checkStoreOpen(store.workingHours, store.status);
 
   return {
-    store: {
-      id: store.id,
-      slug: store.slug,
-      name: store.name,
-      description: store.description,
-      status: store.status,
-    },
-    settings: store.settings,
+    id: store.id,
+    slug: store.slug,
+    name: store.name,
+    description: store.description,
+    isActive: store.status === 'ACTIVE',
     isOpen,
+    deliveryText: store.settings?.deliveryText,
+    cashPaymentMessage: store.settings?.cashPaymentMessage,
+    noticeBanner: store.settings?.noticeText,
+    supportPhone: store.settings?.supportPhone,
+    supportTelegram: store.settings?.supportTelegram,
     workingHours: store.workingHours,
+    categories: store.categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      sortOrder: c.sortOrder,
+      productCount: c._count.products,
+    })),
   };
 }
 
