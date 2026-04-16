@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: foodjet-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: foodjet
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: foodjet-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/foodjet
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      JWT_SECRET: ${JWT_SECRET:-foodjet-dev-jwt-secret-change-me}
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGIN: '*'
+      LOG_LEVEL: info
+    ports:
+      - '3000:3000'
+    volumes:
+      - backend_uploads:/app/apps/backend/uploads
+
+  mini-app:
+    build:
+      context: .
+      dockerfile: apps/mini-app/Dockerfile
+    container_name: foodjet-mini-app
+    ports:
+      - '5173:80'
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    container_name: foodjet-admin
+    ports:
+      - '5174:80'
+
+  courier:
+    build:
+      context: .
+      dockerfile: apps/courier/Dockerfile
+    container_name: foodjet-courier
+    ports:
+      - '5175:80'
+
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: foodjet-postgres-test
+    profiles:
+      - test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: foodjet_test
+    ports:
+      - '5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+  backend_uploads:

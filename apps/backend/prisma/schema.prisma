@@ -1,0 +1,439 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// EPIC C — Store domain
+// ============================================================
+
+model Store {
+  id          String      @id @default(uuid())
+  slug        String      @unique @db.VarChar(64)
+  name        String      @db.VarChar(255)
+  description String?     @db.Text
+  status      StoreStatus @default(ACTIVE)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  settings     StoreSettings?
+  workingHours WorkingHours[]
+  categories   Category[]
+  products     Product[]
+  staffAssignments StaffAssignment[]
+  couriers     Courier[]
+  carts        Cart[]
+  orders       Order[]
+
+  @@map("stores")
+}
+
+enum StoreStatus {
+  ACTIVE
+  INACTIVE
+  TEMPORARILY_CLOSED
+}
+
+model StoreSettings {
+  id                    String  @id @default(uuid())
+  storeId               String  @unique @map("store_id")
+  deliveryText          String? @map("delivery_text") @db.Text
+  cashPaymentMessage    String? @map("cash_payment_message") @db.Text
+  supportPhone          String? @map("support_phone") @db.VarChar(32)
+  supportTelegram       String? @map("support_telegram") @db.VarChar(64)
+  noticeText            String? @map("notice_text") @db.Text
+  orderAcceptanceEnabled Boolean @default(true) @map("order_acceptance_enabled")
+  minOrderAmount        Int?    @map("min_order_amount")
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@map("store_settings")
+}
+
+model WorkingHours {
+  id        String @id @default(uuid())
+  storeId   String @map("store_id")
+  dayOfWeek Int    @map("day_of_week") // 0=Sunday, 6=Saturday
+  openTime  String @map("open_time") @db.VarChar(5) // "09:00"
+  closeTime String @map("close_time") @db.VarChar(5) // "22:00"
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([storeId, dayOfWeek])
+  @@map("working_hours")
+}
+
+// ============================================================
+// EPIC D — Identity / Auth / Roles
+// ============================================================
+
+model User {
+  id             String   @id @default(uuid())
+  telegramId     BigInt?  @unique @map("telegram_id")
+  telegramUsername String? @map("telegram_username") @db.VarChar(64)
+  firstName      String?  @map("first_name") @db.VarChar(128)
+  lastName       String?  @map("last_name") @db.VarChar(128)
+  phone          String?  @db.VarChar(32)
+  status         UserStatus @default(ACTIVE)
+  platformRole   PlatformRole? @map("platform_role")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  customerProfile CustomerProfile?
+  staffAssignments StaffAssignment[]
+  courier         Courier?
+  sessions        Session[]
+
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique @db.VarChar(512)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("sessions")
+}
+
+model StaffAssignment {
+  id        String          @id @default(uuid())
+  userId    String          @map("user_id")
+  storeId   String          @map("store_id")
+  role      StoreRole
+  status    AssignmentStatus @default(ACTIVE)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  user  User  @relation(fields: [userId], references: [id])
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([userId, storeId, role])
+  @@map("staff_assignments")
+}
+
+enum StoreRole {
+  STORE_MANAGER
+  STORE_OPERATOR
+  CATALOG_MANAGER
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Courier {
+  id        String        @id @default(uuid())
+  userId    String        @unique @map("user_id")
+  storeId   String        @map("store_id")
+  status    CourierStatus  @default(ACTIVE)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  store  Store  @relation(fields: [storeId], references: [id])
+  orders Order[]
+
+  @@map("couriers")
+}
+
+enum CourierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ============================================================
+// EPIC E — Catalog
+// ============================================================
+
+model Category {
+  id        String         @id @default(uuid())
+  storeId   String         @map("store_id")
+  name      String         @db.VarChar(255)
+  sortOrder Int            @default(0) @map("sort_order")
+  status    CategoryStatus @default(ACTIVE)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  store    Store     @relation(fields: [storeId], references: [id])
+  products Product[]
+
+  @@map("categories")
+}
+
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+model Product {
+  id           String        @id @default(uuid())
+  storeId      String        @map("store_id")
+  categoryId   String        @map("category_id")
+  name         String        @db.VarChar(255)
+  description  String?       @db.Text
+  price        Int           // cents
+  oldPrice     Int?          @map("old_price")
+  imageUrl     String?       @map("image_url") @db.VarChar(512)
+  status       ProductStatus @default(ACTIVE)
+  isAvailable  Boolean       @default(true) @map("is_available")
+  tags         String[]      @default([])
+  sortOrder    Int           @default(0) @map("sort_order")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  store    Store    @relation(fields: [storeId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+enum ProductStatus {
+  ACTIVE
+  HIDDEN
+  ARCHIVED
+}
+
+// ============================================================
+// EPIC F — Customer / Cart / Checkout
+// ============================================================
+
+model CustomerProfile {
+  id        String  @id @default(uuid())
+  userId    String  @unique @map("user_id")
+  phone     String? @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user      User      @relation(fields: [userId], references: [id])
+  addresses Address[]
+  carts     Cart[]
+  orders    Order[]
+
+  @@map("customer_profiles")
+}
+
+model Address {
+  id              String  @id @default(uuid())
+  customerId      String  @map("customer_id")
+  title           String? @db.VarChar(128)
+  street          String  @db.VarChar(512)
+  entrance        String? @db.VarChar(16)
+  floor           String? @db.VarChar(16)
+  apartment       String? @db.VarChar(32)
+  comment         String? @db.Text
+  isDefault       Boolean @default(false) @map("is_default")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  customer CustomerProfile @relation(fields: [customerId], references: [id])
+  orders   Order[]
+
+  @@map("addresses")
+}
+
+model Cart {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  storeId    String   @map("store_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  customer CustomerProfile @relation(fields: [customerId], references: [id])
+  store    Store           @relation(fields: [storeId], references: [id])
+  items    CartItem[]
+
+  @@unique([customerId, storeId])
+  @@map("carts")
+}
+
+model CartItem {
+  id        String @id @default(uuid())
+  cartId    String @map("cart_id")
+  productId String @map("product_id")
+  quantity  Int    @default(1)
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+// ============================================================
+// EPIC G — Orders
+// ============================================================
+
+model Order {
+  id                  String              @id @default(uuid())
+  orderNumber         String              @unique @map("order_number") @db.VarChar(32)
+  storeId             String              @map("store_id")
+  customerId          String              @map("customer_id")
+  addressId           String?             @map("address_id")
+  courierId           String?             @map("courier_id")
+  status              OrderStatus         @default(NEW)
+  deliveryAddress     String              @map("delivery_address") @db.Text
+  deliveryComment     String?             @map("delivery_comment") @db.Text
+  contactPhone        String              @map("contact_phone") @db.VarChar(32)
+  contactName         String              @map("contact_name") @db.VarChar(128)
+  orderComment        String?             @map("order_comment") @db.Text
+  substitutionPolicy  SubstitutionPolicy  @default(CONTACT_ME) @map("substitution_policy")
+  paymentMethod       PaymentMethod       @default(CASH) @map("payment_method")
+  subtotal            Int                 // cents
+  deliveryFee         Int                 @default(0) @map("delivery_fee")
+  total               Int                 // cents
+  cancelReason        String?             @map("cancel_reason") @db.Text
+  cancelledBy         String?             @map("cancelled_by")
+  deliveredAt         DateTime?           @map("delivered_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  store    Store            @relation(fields: [storeId], references: [id])
+  customer CustomerProfile  @relation(fields: [customerId], references: [id])
+  address  Address?         @relation(fields: [addressId], references: [id])
+  courier  Courier?         @relation(fields: [courierId], references: [id])
+  items    OrderItem[]
+  history  OrderStatusHistory[]
+
+  @@index([storeId, status])
+  @@index([customerId])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  ASSEMBLING
+  AWAITING_SUBSTITUTION_DECISION
+  READY_FOR_DELIVERY
+  ASSIGNED_TO_COURIER
+  IN_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum SubstitutionPolicy {
+  ALLOW
+  CONTACT_ME
+  DO_NOT_SUBSTITUTE
+}
+
+enum PaymentMethod {
+  CASH
+}
+
+model OrderItem {
+  id            String  @id @default(uuid())
+  orderId       String  @map("order_id")
+  productId     String  @map("product_id")
+  productName   String  @map("product_name") @db.VarChar(255)
+  productPrice  Int     @map("product_price")
+  quantity      Int
+  total         Int
+  isSubstituted Boolean @default(false) @map("is_substituted")
+  isRemoved     Boolean @default(false) @map("is_removed")
+  substituteNote String? @map("substitute_note") @db.Text
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String      @map("order_id")
+  fromStatus OrderStatus? @map("from_status")
+  toStatus  OrderStatus @map("to_status")
+  actorId   String?     @map("actor_id")
+  actorType String?     @map("actor_type") @db.VarChar(32) // system, customer, staff, courier
+  note      String?     @db.Text
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@map("order_status_history")
+}
+
+// ============================================================
+// EPIC H — Notifications
+// ============================================================
+
+model Notification {
+  id          String             @id @default(uuid())
+  type        NotificationType
+  recipientId String             @map("recipient_id")
+  channel     NotificationChannel @default(TELEGRAM)
+  payload     Json
+  status      NotificationStatus @default(PENDING)
+  sentAt      DateTime?          @map("sent_at")
+  errorMessage String?           @map("error_message") @db.Text
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  @@index([recipientId])
+  @@index([status])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  ORDER_NEW
+  ORDER_CONFIRMED
+  ORDER_ASSEMBLING
+  ORDER_READY
+  ORDER_COURIER_ASSIGNED
+  ORDER_IN_DELIVERY
+  ORDER_DELIVERED
+  ORDER_CANCELLED
+  ORDER_SUBSTITUTION_NEEDED
+}
+
+enum NotificationChannel {
+  TELEGRAM
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ============================================================
+// EPIC L — Audit
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entityType String   @map("entity_type") @db.VarChar(64)
+  entityId   String   @map("entity_id") @db.VarChar(128)
+  action     String   @db.VarChar(64)
+  actorId    String?  @map("actor_id")
+  actorType  String?  @map("actor_type") @db.VarChar(32) // system, user
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}

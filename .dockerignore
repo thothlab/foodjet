@@ -1,0 +1,13 @@
+node_modules
+*/node_modules
+*/*/node_modules
+.git
+.env
+*.env.local
+dist
+*/dist
+*/*/dist
+.DS_Store
+*.log
+uploads/*
+!uploads/.gitkeep
